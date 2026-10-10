@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Emergency History — SafeHer</title>
+  <link rel="stylesheet" href="/static/css/safeher.css" />
+</head>
+<body>
+  <nav class="sh-nav">
+    <a class="brand" href="/static/dashboard.html">Safe<span>Her</span></a>
+    <div class="sh-nav-links"><a href="/static/dashboard.html">Dashboard</a><a href="#" onclick="logout()">Logout</a></div>
+  </nav>
+  <div class="sh-container">
+    <div class="sh-page-title">📋 Emergency History</div>
+    <div id="alert" class="sh-alert"></div>
+    <div class="sh-card" style="background:#f9fafb;border-left:4px solid var(--muted)">
+      <p style="font-size:0.82rem;color:var(--muted)">Only your own emergency events are shown. Location data is only stored if you enabled it in Privacy settings.</p>
+    </div>
+    <div id="historyList"></div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script>
+    requireAuth();
+    const statusBadge = { active: 'badge-danger', resolved: 'badge-safe', cancelled: 'badge-muted' };
+    const typeLabel = {
+      manual_sos: '🚨 Manual SOS', voice_sos: '🎙️ Voice SOS',
+      journey_escalation: '🧭 Journey Escalation', user_alert: '⚠️ User Alert',
+    };
+
+    async function load() {
+      try {
+        const events = await API.get('/api/emergency/history');
+        const el = document.getElementById('historyList');
+        if (!events.length) {
+          el.innerHTML = '<div class="sh-card"><p style="color:var(--muted);font-size:0.9rem">No emergency events recorded.</p></div>';
+          return;
+        }
+        el.innerHTML = events.map(e => `
+          <div class="sh-card">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:0.5rem">
+              <div>
+                <div style="font-weight:700">${typeLabel[e.event_type] || e.event_type}</div>
+                <div style="font-size:0.82rem;color:var(--muted)">${fmtDate(e.created_at)}</div>
+                ${e.notes ? `<div style="font-size:0.82rem;margin-top:0.2rem">${e.notes}</div>` : ''}
+                ${e.location_link
+                  ? `<a href="${e.location_link}" target="_blank" style="font-size:0.82rem;color:var(--primary)">📍 View Location</a>`
+                  : '<div style="font-size:0.78rem;color:var(--muted)">📍 Location not stored</div>'}
+                <div style="font-size:0.78rem;color:var(--muted);margin-top:0.2rem">
+                  Notifications: ${e.notifications_sent ? '✓ Sent' : '✗ Not sent'}
+                </div>
+              </div>
+              <span class="badge ${statusBadge[e.status] || 'badge-muted'}">${e.status}</span>
+            </div>
+            ${e.status === 'active' ? `
+              <div style="margin-top:0.75rem">
+                <button class="btn-sh btn-outline btn-sm" onclick="cancelEvent(${e.id})">Cancel Event</button>
+              </div>` : ''}
+          </div>`).join('');
+      } catch (err) { showAlert('alert', 'Failed to load history'); }
+    }
+
+    async function cancelEvent(id) {
+      if (!confirm('Mark this emergency event as cancelled?')) return;
+      try { await API.post(`/api/emergency/${id}/cancel`); load(); showAlert('alert', 'Event cancelled', 'success'); }
+      catch (e) { showAlert('alert', e.detail); }
+    }
+
+    load();
+  </script>
+</body>
+</html>

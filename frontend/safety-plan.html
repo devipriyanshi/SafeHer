@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Safety Plans — SafeHer</title>
+  <link rel="stylesheet" href="/static/css/safeher.css" />
+</head>
+<body>
+  <nav class="sh-nav">
+    <a class="brand" href="/static/dashboard.html">Safe<span>Her</span></a>
+    <div class="sh-nav-links"><a href="/static/dashboard.html">Dashboard</a><a href="#" onclick="logout()">Logout</a></div>
+  </nav>
+  <div class="sh-container">
+    <div class="sh-page-title">🗺️ Safety Plans</div>
+    <div id="alert" class="sh-alert"></div>
+    <div class="sh-card">
+      <div class="sh-card-title">Create New Plan</div>
+      <form id="planForm">
+        <div class="sh-form-group"><label>Plan Name</label><input type="text" id="name" class="sh-input" placeholder="College to Home" required /></div>
+        <div class="sh-form-group"><label>From</label><input type="text" id="origin" class="sh-input" placeholder="Starting point" required /></div>
+        <div class="sh-form-group"><label>To</label><input type="text" id="destination" class="sh-input" placeholder="Destination" required /></div>
+        <div class="sh-form-group"><label>Expected Duration (minutes)</label><input type="number" id="duration" class="sh-input" placeholder="45" min="1" required /></div>
+        <div class="sh-form-group"><label>Notes (optional)</label><input type="text" id="notes" class="sh-input" placeholder="Take bus route 12" /></div>
+        <button type="submit" class="btn-sh btn-primary">Add Plan</button>
+      </form>
+    </div>
+    <div id="plansList"></div>
+  </div>
+  <script src="/static/js/api.js"></script>
+  <script>
+    requireAuth();
+    async function loadPlans() {
+      const plans = await API.get('/api/safety-plans');
+      const el = document.getElementById('plansList');
+      if (!plans.length) { el.innerHTML = '<p style="color:var(--muted);font-size:0.85rem">No safety plans yet.</p>'; return; }
+      el.innerHTML = plans.map(p => `
+        <div class="sh-card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="font-weight:700">${p.name}</div>
+              <div style="font-size:0.82rem;color:var(--muted)">${p.origin} → ${p.destination} · ${p.expected_duration_minutes} min</div>
+              ${p.notes ? `<div style="font-size:0.8rem;color:var(--muted);margin-top:0.2rem">${p.notes}</div>` : ''}
+            </div>
+            <span class="badge ${p.is_active ? 'badge-safe' : 'badge-muted'}">${p.is_active ? 'Active' : 'Inactive'}</span>
+          </div>
+          <div style="margin-top:0.75rem;display:flex;gap:0.5rem">
+            <button class="btn-sh btn-danger btn-sm" onclick="deletePlan(${p.id})">Delete</button>
+            <button class="btn-sh btn-outline btn-sm" onclick="togglePlan(${p.id}, ${p.is_active})">${p.is_active ? 'Deactivate' : 'Activate'}</button>
+          </div>
+        </div>`).join('');
+    }
+    async function deletePlan(id) {
+      if (!confirm('Delete this plan?')) return;
+      try { await API.delete(`/api/safety-plans/${id}`); loadPlans(); }
+      catch (e) { showAlert('alert', e.detail); }
+    }
+    async function togglePlan(id, current) {
+      try { await API.put(`/api/safety-plans/${id}`, { is_active: !current }); loadPlans(); }
+      catch (e) { showAlert('alert', e.detail); }
+    }
+    document.getElementById('planForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      try {
+        await API.post('/api/safety-plans', {
+          name: document.getElementById('name').value,
+          origin: document.getElementById('origin').value,
+          destination: document.getElementById('destination').value,
+          expected_duration_minutes: parseInt(document.getElementById('duration').value),
+          notes: document.getElementById('notes').value || null,
+        });
+        e.target.reset(); loadPlans();
+        showAlert('alert', 'Plan created ✓', 'success');
+      } catch (err) { showAlert('alert', err.detail || 'Failed'); }
+    });
+    loadPlans();
+  </script>
+</body>
+</html>

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — SafeHer</title>
+  <link rel="stylesheet" href="/static/css/safeher.css" />
+  <style>
+    .sos-section { text-align: center; padding: 1.5rem 0; }
+    .sos-label { font-size: 0.8rem; color: var(--muted); margin-top: 0.5rem; }
+    .quick-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+    .quick-btn { display: flex; flex-direction: column; align-items: center; gap: 0.4rem; padding: 1rem 0.5rem; background: var(--card); border-radius: 12px; border: none; cursor: pointer; font-size: 0.82rem; font-weight: 600; color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.07); text-decoration: none; transition: box-shadow 0.2s; }
+    .quick-btn:hover { box-shadow: 0 3px 10px rgba(124,58,237,0.15); }
+    .quick-btn .icon { font-size: 1.6rem; }
+    .journey-status { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }
+  </style>
+</head>
+<body>
+  <nav class="sh-nav">
+    <a class="brand" href="/static/dashboard.html">Safe<span>Her</span></a>
+    <div class="sh-nav-links">
+      <a href="/static/journey.html">Journey</a>
+      <a href="/static/contacts.html">Contacts</a>
+      <a href="/static/privacy.html">Privacy</a>
+      <a href="#" onclick="logout()">Logout</a>
+    </div>
+  </nav>
+
+  <div class="sh-container">
+    <div class="sh-page-title">My Safety Today</div>
+    <div id="alert" class="sh-alert"></div>
+
+    <!-- SOS -->
+    <div class="sh-card sos-section">
+      <button class="sos-btn" onclick="triggerSOS()">SOS</button>
+      <div class="sos-label">Press only in a genuine emergency</div>
+    </div>
+
+    <!-- Stats -->
+    <div class="dash-grid" id="statsGrid">
+      <div class="dash-stat"><div class="dash-stat-value" id="statJourney">—</div><div class="dash-stat-label">Active Journey</div></div>
+      <div class="dash-stat"><div class="dash-stat-value" id="statContacts">—</div><div class="dash-stat-label">Emergency Contacts</div></div>
+      <div class="dash-stat"><div class="dash-stat-value" id="statPlans">—</div><div class="dash-stat-label">Safety Plans</div></div>
+      <div class="dash-stat"><div class="dash-stat-value" id="statEvents">—</div><div class="dash-stat-label">Past Events</div></div>
+    </div>
+
+    <!-- Active Journey Card -->
+    <div class="sh-card" id="journeyCard" style="display:none">
+      <div class="sh-card-title">🧭 Active Journey</div>
+      <div class="journey-status">
+        <div>
+          <div id="journeyRoute" style="font-weight:600"></div>
+          <div id="journeyETA" style="font-size:0.82rem;color:var(--muted);margin-top:0.2rem"></div>
+        </div>
+        <span id="journeyBadge" class="badge"></span>
+      </div>
+      <div style="display:flex;gap:0.5rem;margin-top:0.75rem;flex-wrap:wrap">
+        <button class="btn-sh btn-safe btn-sm" onclick="markSafe()">✓ Mark Safe</button>
+        <button class="btn-sh btn-warn btn-sm" onclick="window.location.href='/static/journey.html'">Manage</button>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="quick-actions">
+      <a href="/static/journey.html" class="quick-btn"><span class="icon">🧭</span>Start Journey</a>
+      <a href="/static/safety-plan.html" class="quick-btn"><span class="icon">🗺️</span>Safety Plans</a>
+      <a href="/static/ai-safety.html" class="quick-btn"><span class="icon">🤖</span>AI Safety</a>
+      <a href="/static/contacts.html" class="quick-btn"><span class="icon">👥</span>Contacts</a>
+      <a href="/static/privacy.html" class="quick-btn"><span class="icon">🔒</span>Privacy</a>
+      <a href="/static/history.html" class="quick-btn"><span class="icon">📋</span>History</a>
+    </div>
+
+    <!-- Welcome -->
+    <div class="sh-card">
+      <div class="sh-card-title">Welcome, <span id="userName">—</span></div>
+      <p style="font-size:0.85rem;color:var(--muted)">SafeHer keeps you in control. Start a journey, manage your safety plan, or review your privacy settings.</p>
+    </div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script>
+    requireAuth();
+    let activeJourney = null;
+
+    async function loadDashboard() {
+      try {
+        const [user, contacts, plans, history, journey] = await Promise.all([
+          API.get('/api/auth/me'),
+          API.get('/api/contacts'),
+          API.get('/api/safety-plans'),
+          API.get('/api/emergency/history'),
+          API.get('/api/journeys/active'),
+        ]);
+        document.getElementById('userName').textContent = user.full_name;
+        document.getElementById('statContacts').textContent = contacts.length;
+        document.getElementById('statPlans').textContent = plans.length;
+        document.getElementById('statEvents').textContent = history.length;
+
+        if (journey) {
+          activeJourney = journey;
+          document.getElementById('statJourney').textContent = '1';
+          document.getElementById('journeyCard').style.display = 'block';
+          document.getElementById('journeyRoute').textContent = `${journey.origin} → ${journey.destination}`;
+          document.getElementById('journeyETA').textContent = `ETA: ${fmtDate(journey.expected_arrival_at)}`;
+          const badge = document.getElementById('journeyBadge');
+          badge.textContent = journey.status;
+          badge.className = `badge ${journey.status === 'active' ? 'badge-safe' : 'badge-warn'}`;
+        } else {
+          document.getElementById('statJourney').textContent = '0';
+        }
+      } catch (e) {
+        showAlert('alert', 'Failed to load dashboard data');
+      }
+    }
+
+    async function markSafe() {
+      if (!activeJourney) return;
+      try {
+        await API.post(`/api/journeys/${activeJourney.id}/safe`);
+        showAlert('alert', 'Marked safe ✓', 'success');
+      } catch (e) { showAlert('alert', e.detail); }
+    }
+
+    async function triggerSOS() {
+      if (!confirm('⚠️ This will send an emergency alert to your contacts. Continue?')) return;
+      try {
+        let lat = null, lon = null;
+        try {
+          const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 }));
+          lat = pos.coords.latitude; lon = pos.coords.longitude;
+        } catch (_) {}
+        await API.post('/api/emergency/sos', {
+          event_type: 'manual_sos', latitude: lat, longitude: lon,
+          journey_id: activeJourney?.id || null,
+        });
+        showAlert('alert', '🚨 SOS sent to your emergency contacts.', 'success');
+      } catch (e) { showAlert('alert', e.detail || 'SOS failed'); }
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>

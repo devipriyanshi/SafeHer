@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+data/safeher.db
+backend/ai_safety/model_artifact.pkl
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.DS_Store

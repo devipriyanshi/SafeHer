@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Safety — SafeHer</title>
+  <link rel="stylesheet" href="/static/css/safeher.css" />
+</head>
+<body>
+  <nav class="sh-nav">
+    <a class="brand" href="/static/dashboard.html">Safe<span>Her</span></a>
+    <div class="sh-nav-links"><a href="/static/dashboard.html">Dashboard</a><a href="#" onclick="logout()">Logout</a></div>
+  </nav>
+  <div class="sh-container">
+    <div class="sh-page-title">🤖 AI Safety Assistance</div>
+    <div id="alert" class="sh-alert"></div>
+
+    <div class="sh-card" style="background:var(--primary-light);border-left:4px solid var(--primary)">
+      <p style="font-size:0.85rem;color:var(--primary)">
+        The AI analyzes safety signals from your active journey and produces an <strong>assistive indication</strong>.
+        It does not predict crime or guarantee safety. <strong>You always decide what action to take.</strong>
+      </p>
+    </div>
+
+    <div id="noJourney" class="sh-card" style="display:none">
+      <p style="color:var(--muted);font-size:0.9rem">No active journey found. <a href="/static/journey.html" style="color:var(--primary)">Start a journey</a> to use AI safety assistance.</p>
+    </div>
+
+    <div id="journeyInfo" style="display:none">
+      <div class="sh-card">
+        <div class="sh-card-title">Current Journey</div>
+        <p id="journeyRoute" style="font-weight:600"></p>
+        <p id="journeyETA" style="font-size:0.82rem;color:var(--muted);margin-top:0.2rem"></p>
+        <button class="btn-sh btn-primary" style="margin-top:0.75rem" onclick="analyze()">Run AI Analysis</button>
+      </div>
+
+      <div id="resultCard" style="display:none">
+        <div class="sh-card-title" style="margin-top:0.5rem">Analysis Result</div>
+        <div id="indicationBox"></div>
+
+        <div class="sh-card" style="margin-top:0">
+          <div class="sh-card-title">Contributing Signals</div>
+          <div id="signalsList" style="font-size:0.85rem;color:var(--muted)"></div>
+        </div>
+
+        <div class="sh-card" style="background:#f9fafb;margin-top:0">
+          <p style="font-size:0.75rem;color:var(--muted)">
+            ⚠️ This is an <strong>assistive software signal</strong>, not a measurement of actual danger.
+            The score (0–100) reflects signal patterns only. Always use your own judgment.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script>
+    requireAuth();
+    let journey = null;
+
+    async function load() {
+      try {
+        journey = await API.get('/api/journeys/active');
+        if (!journey) { document.getElementById('noJourney').style.display = 'block'; return; }
+        document.getElementById('journeyInfo').style.display = 'block';
+        document.getElementById('journeyRoute').textContent = `${journey.origin} → ${journey.destination}`;
+        document.getElementById('journeyETA').textContent = `Expected arrival: ${fmtDate(journey.expected_arrival_at)}`;
+
+        // Load latest assessment if exists
+        const existing = await API.get(`/api/ai/assessment/${journey.id}`);
+        if (existing) renderResult(existing);
+      } catch (e) { showAlert('alert', 'Failed to load journey'); }
+    }
+
+    async function analyze() {
+      const btn = document.querySelector('#journeyInfo .btn-primary');
+      btn.disabled = true; btn.textContent = 'Analyzing…';
+      try {
+        const result = await API.post('/api/ai/analyze', { journey_id: journey.id });
+        renderResult(result);
+      } catch (e) { showAlert('alert', e.detail || 'Analysis failed'); }
+      finally { btn.disabled = false; btn.textContent = 'Run AI Analysis'; }
+    }
+
+    function renderResult(a) {
+      document.getElementById('resultCard').style.display = 'block';
+      const colorMap = {
+        normal: 'indication-normal',
+        attention_recommended: 'indication-attention',
+        potentially_unusual: 'indication-unusual',
+      };
+      const scoreColor = a.assistance_score <= 30 ? '#059669' : a.assistance_score <= 60 ? '#d97706' : '#dc2626';
+      const label = a.indication.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+
+      document.getElementById('indicationBox').innerHTML = `
+        <div class="indication-card ${colorMap[a.indication] || ''}">
+          <div class="indication-title">${label}</div>
+          <div class="score-bar-wrap">
+            <div class="score-bar" style="width:${a.assistance_score}%;background:${scoreColor}"></div>
+          </div>
+          <div style="font-size:0.78rem;color:var(--muted);margin-bottom:0.6rem">
+            Assistive Score: <strong>${a.assistance_score}</strong> / 100
+          </div>
+          <p style="font-size:0.85rem;white-space:pre-line;margin-bottom:0.5rem">${a.explanation}</p>
+          <p style="font-size:0.88rem;font-weight:600">→ ${a.suggested_action}</p>
+          ${!a.ai_available ? '<p style="font-size:0.78rem;color:var(--muted);margin-top:0.4rem">⚠️ AI model unavailable — showing safe default. Core features continue normally.</p>' : ''}
+        </div>
+        <p style="font-size:0.75rem;color:var(--muted);margin-top:0.3rem">Analyzed at: ${fmtDate(a.created_at)}</p>`;
+
+      const sigCount = a.contributing_signal_ids ? a.contributing_signal_ids.length : 0;
+      document.getElementById('signalsList').innerHTML = sigCount
+        ? `<p>${sigCount} signal(s) were analyzed for this assessment.</p>`
+        : '<p>No signals recorded for this journey yet.</p>';
+    }
+
+    load();
+  </script>
+</body>
+</html>

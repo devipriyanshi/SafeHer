@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Center — SafeHer</title>
+  <link rel="stylesheet" href="/static/css/safeher.css" />
+</head>
+<body>
+  <nav class="sh-nav">
+    <a class="brand" href="/static/dashboard.html">Safe<span>Her</span></a>
+    <div class="sh-nav-links"><a href="/static/dashboard.html">Dashboard</a><a href="#" onclick="logout()">Logout</a></div>
+  </nav>
+  <div class="sh-container">
+    <div class="sh-page-title">🔒 Privacy Center</div>
+    <div id="alert" class="sh-alert"></div>
+    <div class="sh-card" style="background:#fef3c7;border-left:4px solid #d97706;margin-bottom:1rem">
+      <p style="font-size:0.85rem;color:#92400e">SafeHer collects minimum necessary data. All sensitive features are <strong>off by default</strong>. You control everything below.</p>
+    </div>
+
+    <div class="sh-card">
+      <div class="sh-card-title">Location</div>
+      <div class="privacy-row">
+        <div><div class="privacy-label">Location Access</div><div class="privacy-desc">Allow SafeHer to read your device location during a journey</div></div>
+        <label class="toggle"><input type="checkbox" id="location_access_enabled" onchange="save('location_access_enabled',this.checked)" /><span class="toggle-slider"></span></label>
+      </div>
+      <div class="privacy-row">
+        <div><div class="privacy-label">Location Sharing</div><div class="privacy-desc">Share location with contacts during emergencies</div></div>
+        <label class="toggle"><input type="checkbox" id="location_sharing_enabled" onchange="save('location_sharing_enabled',this.checked)" /><span class="toggle-slider"></span></label>
+      </div>
+      <div class="privacy-row">
+        <div><div class="privacy-label">Store Journey Location</div><div class="privacy-desc">Save location checkpoints to journey history</div></div>
+        <label class="toggle"><input type="checkbox" id="store_journey_location" onchange="save('store_journey_location',this.checked)" /><span class="toggle-slider"></span></label>
+      </div>
+    </div>
+
+    <div class="sh-card">
+      <div class="sh-card-title">Voice & Alerts</div>
+      <div class="privacy-row">
+        <div><div class="privacy-label">Voice Assistance</div><div class="privacy-desc">Enable microphone for voice trigger phrase detection</div></div>
+        <label class="toggle"><input type="checkbox" id="voice_assistance_enabled" onchange="save('voice_assistance_enabled',this.checked)" /><span class="toggle-slider"></span></label>
+      </div>
+      <div class="privacy-row">
+        <div><div class="privacy-label">Location in Alerts</div><div class="privacy-desc">Include location link in emergency alert messages</div></div>
+        <label class="toggle"><input type="checkbox" id="include_location_in_alert" onchange="save('include_location_in_alert',this.checked)" /><span class="toggle-slider"></span></label>
+      </div>
+      <div class="privacy-row">
+        <div><div class="privacy-label">Journey Details in Alerts</div><div class="privacy-desc">Include origin/destination in alert messages</div></div>
+        <label class="toggle"><input type="checkbox" id="include_journey_details_in_alert" onchange="save('include_journey_details_in_alert',this.checked)" /><span class="toggle-slider"></span></label>
+      </div>
+    </div>
+
+    <div class="sh-card">
+      <div class="sh-card-title">Escalation & Retention</div>
+      <div class="privacy-row">
+        <div><div class="privacy-label">Auto-Escalate on Journey Expiry</div><div class="privacy-desc">Automatically notify contacts if journey expires without response</div></div>
+        <label class="toggle"><input type="checkbox" id="auto_escalate_on_journey_expiry" onchange="save('auto_escalate_on_journey_expiry',this.checked)" /><span class="toggle-slider"></span></label>
+      </div>
+      <div class="privacy-row" style="flex-direction:column;align-items:flex-start;gap:0.5rem">
+        <div><div class="privacy-label">Data Retention (days)</div><div class="privacy-desc">How long safety events are kept. Set 0 to not retain.</div></div>
+        <div style="display:flex;gap:0.5rem;align-items:center">
+          <input type="number" id="safety_event_retention_days" class="sh-input" min="0" style="max-width:100px" />
+          <button class="btn-sh btn-primary btn-sm" onclick="saveRetention()">Save</button>
+        </div>
+      </div>
+      <div class="privacy-row" style="flex-direction:column;align-items:flex-start;gap:0.5rem">
+        <div><div class="privacy-label">Voice Trigger Phrase</div><div class="privacy-desc">Phrase that activates voice SOS</div></div>
+        <div style="display:flex;gap:0.5rem;align-items:center">
+          <input type="text" id="voice_trigger_phrase" class="sh-input" style="max-width:200px" />
+          <button class="btn-sh btn-primary btn-sm" onclick="savePhrase()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sh-card">
+      <div class="sh-card-title">What SafeHer Collects</div>
+      <div id="summaryCollected"></div>
+      <div id="summaryNotCollected" style="margin-top:0.75rem"></div>
+    </div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script>
+    requireAuth();
+    async function load() {
+      try {
+        const [s, summary] = await Promise.all([API.get('/api/privacy'), API.get('/api/privacy/summary')]);
+        ['location_access_enabled','location_sharing_enabled','store_journey_location',
+         'voice_assistance_enabled','include_location_in_alert','include_journey_details_in_alert',
+         'auto_escalate_on_journey_expiry'].forEach(k => {
+          const el = document.getElementById(k);
+          if (el) el.checked = s[k];
+        });
+        document.getElementById('safety_event_retention_days').value = s.safety_event_retention_days;
+        document.getElementById('voice_trigger_phrase').value = s.voice_trigger_phrase;
+
+        document.getElementById('summaryCollected').innerHTML =
+          '<p style="font-size:0.82rem;font-weight:600;color:var(--safe);margin-bottom:0.3rem">✓ Collected</p>' +
+          summary.data_collected.map(d => `<p style="font-size:0.82rem;color:var(--muted)">• ${d}</p>`).join('');
+        document.getElementById('summaryNotCollected').innerHTML =
+          '<p style="font-size:0.82rem;font-weight:600;color:var(--muted);margin-bottom:0.3rem">✗ Not Collected</p>' +
+          summary.data_not_collected.map(d => `<p style="font-size:0.82rem;color:var(--muted)">• ${d}</p>`).join('');
+      } catch (e) { showAlert('alert', 'Failed to load privacy settings'); }
+    }
+    async function save(key, value) {
+      try { await API.put('/api/privacy', { [key]: value }); showAlert('alert', 'Saved ✓', 'success'); load(); }
+      catch (e) { showAlert('alert', e.detail || 'Save failed'); }
+    }
+    async function saveRetention() {
+      const v = parseInt(document.getElementById('safety_event_retention_days').value);
+      if (isNaN(v) || v < 0) return showAlert('alert', 'Enter a valid number (0 or more)');
+      await save('safety_event_retention_days', v);
+    }
+    async function savePhrase() {
+      const v = document.getElementById('voice_trigger_phrase').value.trim();
+      if (!v) return showAlert('alert', 'Phrase cannot be empty');
+      await save('voice_trigger_phrase', v);
+    }
+    load();
+  </script>
+</body>
+</html>

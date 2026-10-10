@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contacts — SafeHer</title>
+  <link rel="stylesheet" href="/static/css/safeher.css" />
+</head>
+<body>
+  <nav class="sh-nav">
+    <a class="brand" href="/static/dashboard.html">Safe<span>Her</span></a>
+    <div class="sh-nav-links"><a href="/static/dashboard.html">Dashboard</a><a href="#" onclick="logout()">Logout</a></div>
+  </nav>
+  <div class="sh-container">
+    <div class="sh-page-title">👥 Emergency Contacts</div>
+    <div id="alert" class="sh-alert"></div>
+    <div class="sh-card">
+      <div class="sh-card-title">Add Contact</div>
+      <form id="contactForm">
+        <div class="sh-form-group"><label>Name</label><input type="text" id="name" class="sh-input" placeholder="Mother" required /></div>
+        <div class="sh-form-group"><label>Relationship</label><input type="text" id="relationship" class="sh-input" placeholder="Mother / Friend / Sister" required /></div>
+        <div class="sh-form-group"><label>Phone</label><input type="tel" id="phone" class="sh-input" placeholder="9876543210" /></div>
+        <div class="sh-form-group"><label>Email</label><input type="email" id="email" class="sh-input" placeholder="contact@example.com" /></div>
+        <div class="sh-form-group" style="display:flex;align-items:center;gap:0.5rem">
+          <input type="checkbox" id="is_primary" />
+          <label for="is_primary" style="margin:0">Set as primary contact</label>
+        </div>
+        <button type="submit" class="btn-sh btn-primary">Add Contact</button>
+      </form>
+    </div>
+    <div id="contactsList"></div>
+  </div>
+  <script src="/static/js/api.js"></script>
+  <script>
+    requireAuth();
+    async function loadContacts() {
+      const contacts = await API.get('/api/contacts');
+      const el = document.getElementById('contactsList');
+      if (!contacts.length) { el.innerHTML = '<p style="color:var(--muted);font-size:0.85rem">No contacts added yet.</p>'; return; }
+      el.innerHTML = contacts.map(c => `
+        <div class="sh-card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="font-weight:700">${c.name} ${c.is_primary ? '⭐' : ''}</div>
+              <div style="font-size:0.82rem;color:var(--muted)">${c.relationship}</div>
+              ${c.phone ? `<div style="font-size:0.82rem">${c.phone}</div>` : ''}
+              ${c.email ? `<div style="font-size:0.82rem">${c.email}</div>` : ''}
+            </div>
+            <span class="badge ${c.is_active ? 'badge-safe' : 'badge-muted'}">${c.is_active ? 'Active' : 'Inactive'}</span>
+          </div>
+          <div style="margin-top:0.75rem;display:flex;gap:0.5rem">
+            <button class="btn-sh btn-danger btn-sm" onclick="deleteContact(${c.id})">Delete</button>
+            <button class="btn-sh btn-outline btn-sm" onclick="toggleContact(${c.id}, ${c.is_active})">${c.is_active ? 'Disable' : 'Enable'}</button>
+          </div>
+        </div>`).join('');
+    }
+    async function deleteContact(id) {
+      if (!confirm('Delete this contact?')) return;
+      try { await API.delete(`/api/contacts/${id}`); loadContacts(); }
+      catch (e) { showAlert('alert', e.detail); }
+    }
+    async function toggleContact(id, current) {
+      try { await API.put(`/api/contacts/${id}`, { is_active: !current }); loadContacts(); }
+      catch (e) { showAlert('alert', e.detail); }
+    }
+    document.getElementById('contactForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const phone = document.getElementById('phone').value;
+      const email = document.getElementById('email').value;
+      if (!phone && !email) return showAlert('alert', 'Provide at least phone or email');
+      try {
+        await API.post('/api/contacts', {
+          name: document.getElementById('name').value,
+          relationship: document.getElementById('relationship').value,
+          phone: phone || null, email: email || null,
+          is_primary: document.getElementById('is_primary').checked,
+        });
+        e.target.reset(); loadContacts();
+        showAlert('alert', 'Contact added ✓', 'success');
+      } catch (err) { showAlert('alert', err.detail || 'Failed'); }
+    });
+    loadContacts();
+  </script>
+</body>
+</html>

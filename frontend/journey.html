@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Journey — SafeHer</title>
+  <link rel="stylesheet" href="/static/css/safeher.css" />
+</head>
+<body>
+  <nav class="sh-nav">
+    <a class="brand" href="/static/dashboard.html">Safe<span>Her</span></a>
+    <div class="sh-nav-links">
+      <a href="/static/dashboard.html">Dashboard</a>
+      <a href="#" onclick="logout()">Logout</a>
+    </div>
+  </nav>
+
+  <div class="sh-container">
+    <div class="sh-page-title">🧭 Safety Journey</div>
+    <div id="alert" class="sh-alert"></div>
+
+    <!-- Active journey panel -->
+    <div id="activePanel" style="display:none">
+      <div class="sh-card">
+        <div class="sh-card-title">Active Journey</div>
+        <p id="activeRoute" style="font-weight:600;margin-bottom:0.3rem"></p>
+        <p id="activeETA" style="font-size:0.85rem;color:var(--muted);margin-bottom:0.75rem"></p>
+        <span id="activeBadge" class="badge"></span>
+        <div style="display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap">
+          <button class="btn-sh btn-safe btn-sm" onclick="markSafe()">✓ Mark Safe</button>
+          <button class="btn-sh btn-warn btn-sm" onclick="showExtend()">⏱ Extend</button>
+          <button class="btn-sh btn-primary btn-sm" onclick="completeJourney()">✅ Complete</button>
+          <button class="btn-sh btn-danger btn-sm" onclick="cancelJourney()">✕ Cancel</button>
+        </div>
+        <div id="extendBox" style="display:none;margin-top:0.75rem">
+          <input type="number" id="extendMins" class="sh-input" placeholder="Minutes to extend" min="1" style="max-width:200px" />
+          <button class="btn-sh btn-warn btn-sm" style="margin-top:0.4rem" onclick="extendJourney()">Extend</button>
+        </div>
+      </div>
+
+      <!-- Timeline -->
+      <div class="sh-card">
+        <div class="sh-card-title">📋 Journey Timeline</div>
+        <div class="timeline" id="timeline"><p style="color:var(--muted);font-size:0.85rem">Loading…</p></div>
+      </div>
+
+      <!-- AI Assessment -->
+      <div class="sh-card">
+        <div class="sh-card-title">🤖 AI Safety Assistance</div>
+        <button class="btn-sh btn-primary btn-sm" onclick="runAI()">Analyze Safety Signals</button>
+        <div id="aiResult" style="margin-top:0.75rem"></div>
+      </div>
+    </div>
+
+    <!-- Start journey form -->
+    <div id="startPanel">
+      <div class="sh-card">
+        <div class="sh-card-title">Start a New Journey</div>
+        <form id="startForm">
+          <div class="sh-form-group">
+            <label>From</label>
+            <input type="text" id="origin" class="sh-input" placeholder="Starting point" required />
+          </div>
+          <div class="sh-form-group">
+            <label>To</label>
+            <input type="text" id="destination" class="sh-input" placeholder="Destination" required />
+          </div>
+          <div class="sh-form-group">
+            <label>Expected Duration (minutes)</label>
+            <input type="number" id="duration" class="sh-input" placeholder="45" min="1" required />
+          </div>
+          <div class="sh-form-group">
+            <label>Safety Plan (optional)</label>
+            <select id="planSelect" class="sh-input sh-select">
+              <option value="">— None —</option>
+            </select>
+          </div>
+          <button type="submit" class="btn-sh btn-primary btn-block">Start Journey</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script>
+    requireAuth();
+    let journey = null;
+
+    async function load() {
+      try {
+        journey = await API.get('/api/journeys/active');
+        const plans = await API.get('/api/safety-plans');
+        plans.forEach(p => {
+          const o = document.createElement('option');
+          o.value = p.id; o.textContent = p.name;
+          document.getElementById('planSelect').appendChild(o);
+        });
+        if (journey) {
+          document.getElementById('activePanel').style.display = 'block';
+          document.getElementById('startPanel').style.display = 'none';
+          renderActive();
+          loadTimeline();
+        }
+      } catch (e) { showAlert('alert', 'Failed to load journey data'); }
+    }
+
+    function renderActive() {
+      document.getElementById('activeRoute').textContent = `${journey.origin} → ${journey.destination}`;
+      document.getElementById('activeETA').textContent = `Expected arrival: ${fmtDate(journey.expected_arrival_at)}`;
+      const b = document.getElementById('activeBadge');
+      b.textContent = journey.status;
+      b.className = `badge ${journey.status === 'active' ? 'badge-safe' : 'badge-warn'}`;
+    }
+
+    async function loadTimeline() {
+      try {
+        const tl = await API.get(`/api/journeys/${journey.id}/timeline`);
+        const el = document.getElementById('timeline');
+        el.innerHTML = tl.timeline.map(e => `
+          <div class="timeline-item">
+            <div class="timeline-time">${fmtDate(e.timestamp)}</div>
+            <div class="timeline-event">${e.event}</div>
+            ${e.detail ? `<div class="timeline-detail">${e.detail}</div>` : ''}
+          </div>`).join('');
+      } catch (_) {}
+    }
+
+    async function markSafe() {
+      try { await API.post(`/api/journeys/${journey.id}/safe`); showAlert('alert', '✓ Marked safe', 'success'); loadTimeline(); }
+      catch (e) { showAlert('alert', e.detail); }
+    }
+
+    function showExtend() { document.getElementById('extendBox').style.display = 'block'; }
+
+    async function extendJourney() {
+      const mins = parseInt(document.getElementById('extendMins').value);
+      if (!mins || mins < 1) return showAlert('alert', 'Enter valid minutes');
+      try {
+        journey = await API.post(`/api/journeys/${journey.id}/extend`, { extend_by_minutes: mins });
+        renderActive(); loadTimeline();
+        showAlert('alert', `Journey extended by ${mins} minutes`, 'success');
+        document.getElementById('extendBox').style.display = 'none';
+      } catch (e) { showAlert('alert', e.detail); }
+    }
+
+    async function completeJourney() {
+      if (!confirm('Mark this journey as completed?')) return;
+      try {
+        await API.post(`/api/journeys/${journey.id}/complete`);
+        showAlert('alert', 'Journey completed ✓', 'success');
+        setTimeout(() => window.location.reload(), 1500);
+      } catch (e) { showAlert('alert', e.detail); }
+    }
+
+    async function cancelJourney() {
+      if (!confirm('Cancel this journey?')) return;
+      try {
+        await API.post(`/api/journeys/${journey.id}/cancel`);
+        showAlert('alert', 'Journey cancelled', 'info');
+        setTimeout(() => window.location.reload(), 1500);
+      } catch (e) { showAlert('alert', e.detail); }
+    }
+
+    async function runAI() {
+      const el = document.getElementById('aiResult');
+      el.innerHTML = '<p style="color:var(--muted);font-size:0.85rem">Analyzing…</p>';
+      try {
+        const a = await API.post('/api/ai/analyze', { journey_id: journey.id });
+        const colorMap = { normal: 'indication-normal', attention_recommended: 'indication-attention', potentially_unusual: 'indication-unusual' };
+        const scoreColor = a.assistance_score <= 30 ? '#059669' : a.assistance_score <= 60 ? '#d97706' : '#dc2626';
+        el.innerHTML = `
+          <div class="indication-card ${colorMap[a.indication] || ''}">
+            <div class="indication-title">${a.indication.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</div>
+            <div class="score-bar-wrap"><div class="score-bar" style="width:${a.assistance_score}%;background:${scoreColor}"></div></div>
+            <div style="font-size:0.78rem;color:var(--muted);margin-bottom:0.5rem">Assistive Score: ${a.assistance_score}/100</div>
+            <p style="font-size:0.85rem;white-space:pre-line">${a.explanation}</p>
+            <p style="font-size:0.85rem;margin-top:0.5rem;font-weight:600">→ ${a.suggested_action}</p>
+            ${!a.ai_available ? '<p style="font-size:0.78rem;color:var(--muted);margin-top:0.4rem">⚠️ AI model unavailable — showing safe default</p>' : ''}
+          </div>`;
+      } catch (e) { el.innerHTML = `<p style="color:var(--danger);font-size:0.85rem">${e.detail || 'Analysis failed'}</p>`; }
+    }
+
+    document.getElementById('startForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button');
+      btn.disabled = true; btn.textContent = 'Starting…';
+      try {
+        const planId = document.getElementById('planSelect').value;
+        journey = await API.post('/api/journeys/start', {
+          origin: document.getElementById('origin').value,
+          destination: document.getElementById('destination').value,
+          expected_duration_minutes: parseInt(document.getElementById('duration').value),
+          safety_plan_id: planId ? parseInt(planId) : null,
+        });
+        window.location.reload();
+      } catch (e) {
+        showAlert('alert', e.detail || 'Failed to start journey');
+        btn.disabled = false; btn.textContent = 'Start Journey';
+      }
+    });
+
+    load();
+  </script>
+</body>
+</html>
